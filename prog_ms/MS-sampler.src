@@ -1,0 +1,437 @@
+/************************************************************
+
+  Markov Switching Sampler
+  
+  para = volatirities of high (regime 0) and Low (regime 1)
+
+  pq = transition probabilities
+  
+  stt = smoothed probabilities
+  
+  BASED ON THE ORIGINAL CODE WRITTEN BY ALTERT AND CHIB (JBES, 1993).
+
+************************************************************/
+
+proc (3) = ms_sampler(ytt, para, pq);
+
+local  rej, stt, tranmat;      
+
+       {para, rej } = mh_var(ytt, para, pq);		   
+		
+       STT          =  GEN_ST(ytt, para, pq);           
+
+       tranmat = switchg(stt+1,1|2);
+
+       pq[1] = rndb(tranmat[1,2]+u1_01_,tranmat[1,1]+u1_00_);
+       pq[2] = rndb(tranmat[2,1]+u1_10_,tranmat[2,2]+u1_11_);
+	   
+
+retp( stt, para, pq );
+endp;	   
+
+@========================================================@
+@      A PROCEDURE THAT GENERATES  MU0, MU1              @
+@========================================================@
+
+proc (2) = mh_var(ystar, paraold, pq);
+
+local  postnew, postold, likenew, likeold, paranew, 
+       cc_sv, sigtdraw, log_lik, yydraw, flag, r, rej;	   
+
+  
+   // new para
+   flag = 0;  cc_sv = 0.01; rej =0;
+   
+   do until flag > 0;
+	 paranew = paraold + cc_sv*(eye(2)*rndn(2,1));	 
+	 
+	  if (paranew[1] > paranew[2]) ;
+		  flag = 1;
+	  endif;
+   endo;	  
+ 
+   {likeold}= ms_lik(ystar, paraold, pq); 	
+   {likenew}= ms_lik(ystar, paranew, pq);
+	
+	// MH algorithm 
+	postnew = likenew;  postold = likeold; 	
+	
+	r = minc(1 | exp( postnew - postold));  //print(likenew~likeold~r);
+  
+    if rndu(1,1) < r;
+       /* Accept proposed jump
+       */
+           paraold = paranew;
+           postold = postnew;
+           likeold = likenew;
+    else;
+       /* Reject proposed jump
+       */   
+         rej = 1;
+    endif;
+
+
+retp( paraold, rej );
+endp;
+
+/*************************************************/
+
+PROC MS_lik(ystar, para, pq);
+local  lag_ar,no_st,dmnsion,st_mat,j,st1,st,t0,x_mat,tstar,flt_pr,
+       ppr,qpr,phi1,phi2,mu_0,mu_1,sig_v0,sig_v1,
+	   st2,st3,st4,phi,pr_tr,pr_trf1, pr_trf2,a,en,
+       var_l,pr_trf0,pr_trf,f1,mu_mat,prob__1,prob__0,prob__t,prob__,
+       j_iter,f_cast1,prob_dd,pr_vl,pr_val,pro_,s_t,p0,p1,TMP,PROB__T0,
+	   likv,lik,pmean, pstdd, pshape;
+
+   //YSTAR=YTT;
+   TSTAR=ROWS(YSTAR);
+
+   FLT_PR=ZEROS(2,TSTAR);
+   DMNSION=4;
+
+              @For common component@
+                     PPR=1-pq[2];    @Pr[St=1/St-1=1]@
+                     QPR=1-pq[1];    @Pr[St=0/St-1=0]@
+                     //mu_0=mu0tt;
+                     //mu_1=mu1tt;
+					 
+					 sig_v0 = para[1];
+                     sig_v1 = para[2];
+
+                     PR_TR=(QPR~    (1-PPR))|
+                           ((1-QPR)~  PPR);
+
+   //VAR_L=SIG_V*ONES(4,1);
+   
+   VAR_L = sig_v0|sig_v1|sig_v0|sig_v1;
+   mu_mat= zeros(4,1);    //mu_0|(mu_0+mu_1)|mu_0|(mu_0+mu_1);
+
+   @<<<<<<<<<<<<<<<<<<<START FILTERING>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>@
+
+           PR_TRF=VEC(PR_TR);
+
+           A = (eye(2)-pr_tr)|ones(1,2);
+           EN=(0|0|1);
+           PROB__T = INV(A'A)*A'EN;  @PR[S_t=0]|PR[S_t=1],
+                                  2x1 steady-state PROBABILITIES@
+           PROB__T0=PROB__T;
+
+
+           PROB__=VECR(PROB__T~PROB__T);
+
+
+   @++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++@
+   @BEGIN FILTERING       ++++++++++++++++++++++++++++++++++++++++++++++++@
+   @++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++@
+     
+       LIKV=0.0;
+       J_ITER=1;
+       DO UNTIL J_ITER>TSTAR;
+
+          f_cast1=ystar[j_iter,1]*ones(DMNSION,1)- mu_mat;
+
+          prob_dd=PR_TRF .* PROB__;
+
+          pr_vl=(1./SQRT(2.*PI.*var_L)).*EXP(-0.5*f_cast1.*f_cast1./var_L)
+             .*prob_dd;	  	 
+
+          @PR[St-m,...,St-1,St|Y_t]@
+
+          pr_val=sumc(pr_vl);
+
+            LIK= LN(PR_VAL);
+
+          pro_=pr_vl/pr_val;
+
+          PROB__T=PRO_[1:DMNSION/2,1]+PRO_[DMNSION/2+1:DMNSION,1];
+                                             @Pr[St-m+1,...,St/Yt]@
+
+          PROB__=VECR(PROB__T~PROB__T);
+
+          FLT_PR[.,J_ITER]=PROB__T;  @Pr[St|Yt], 2x1@
+		  
+		  LIKV = LIKV+LIK;
+
+   J_ITER = J_ITER+1;
+   ENDO;
+
+  
+   //  Prior 
+
+   //lnprio =  priodens(para, pmean, pstdd, pshape);
+   // retp(LIKV + lnprio );
+
+retp(LIKV );
+endp;
+
+
+@=========================================================================@
+@====PROCEDURE THAT GENERATES ST==========================================@
+@=========================================================================@
+
+PROC GEN_ST(Ystar, para, pq);
+
+local  lag_ar,no_st,dmnsion,st_mat,j,st1,st,t0,x_mat,tstar,flt_pr,
+       ppr,qpr,phi1,phi2,mu_0,mu_1,sig_v0,sig_v1,
+	   st2,st3,st4,phi,pr_tr,pr_trf1, pr_trf2,a,en,
+       var_l,pr_trf0,pr_trf,f1,mu_mat,prob__1,prob__0,prob__t,prob__,
+       j_iter,f_cast1,prob_dd,pr_vl,pr_val,pro_,s_t,p0,p1,TMP,PROB__T0;
+
+
+
+   //YSTAR=YTT;
+   TSTAR=ROWS(YSTAR);
+
+   FLT_PR=ZEROS(2,TSTAR);
+   DMNSION=4;
+
+              @For common component@
+                     PPR=1-pq[2];    @Pr[St=1/St-1=1]@
+                     QPR=1-pq[1];    @Pr[St=0/St-1=0]@
+                     //mu_0=mu0tt;
+                     //mu_1=mu1tt;
+					 
+					 sig_v0=para[1];
+                     sig_v1=para[2];
+
+                     PR_TR=(QPR~    (1-PPR))|
+                           ((1-QPR)~  PPR);
+
+   //VAR_L=SIG_V*ONES(4,1);
+   
+   VAR_L = sig_v0|sig_v1|sig_v0|sig_v1;
+   mu_mat = zeros(4,1);  //mu_0|(mu_0+mu_1)|mu_0|(mu_0+mu_1);
+
+   @<<<<<<<<<<<<<<<<<<<START FILTERING>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>@
+
+           PR_TRF=VEC(PR_TR);
+
+           A = (eye(2)-pr_tr)|ones(1,2);
+           EN=(0|0|1);
+           PROB__T = INV(A'A)*A'EN;  @PR[S_t=0]|PR[S_t=1],
+                                  2x1 steady-state PROBABILITIES@
+           PROB__T0=PROB__T;
+
+
+           PROB__=VECR(PROB__T~PROB__T);
+
+
+   @++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++@
+   @BEGIN FILTERING       ++++++++++++++++++++++++++++++++++++++++++++++++@
+   @++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++@
+
+       J_ITER=1;
+       DO UNTIL J_ITER>TSTAR;
+
+          f_cast1=ystar[j_iter,1]*ones(DMNSION,1)- mu_mat;
+
+          prob_dd=PR_TRF .* PROB__;
+
+          pr_vl=(1./SQRT(2.*PI.*var_L)).*EXP(-0.5*f_cast1.*f_cast1./var_L)
+             .*prob_dd;
+
+          @PR[St-m,...,St-1,St|Y_t]@
+
+          pr_val=sumc(pr_vl);
+
+          pro_=pr_vl/pr_val;
+
+          PROB__T=PRO_[1:DMNSION/2,1]+PRO_[DMNSION/2+1:DMNSION,1];
+                                             @Pr[St-m+1,...,St/Yt]@
+
+          PROB__=VECR(PROB__T~PROB__T);
+
+          FLT_PR[.,J_ITER]=PROB__T;  @Pr[St|Yt], 2x1@
+
+   J_ITER = J_ITER+1;
+   ENDO;
+
+
+   @=============== GENERATE S_T =====================================@
+
+         S_T=ZEROS(TSTAR,1);
+         S_T[TSTAR,1]=  BINGEN(FLT_PR[1,TSTAR],FLT_PR[2,TSTAR],1);
+
+     J_ITER=TSTAR-1;
+     DO UNTIL J_ITER<1;
+
+            IF S_T[J_ITER+1,1]==0;
+                    P0=QPR*FLT_PR[1,J_ITER];
+                    P1=(1-PPR)*FLT_PR[2,J_ITER];
+            ELSEIF S_T[J_ITER+1,1]==1;
+                    P0=(1-QPR)*FLT_PR[1,J_ITER];
+                    P1=PPR*FLT_PR[2,J_ITER];
+            ENDIF;
+
+
+            S_T[J_ITER,1]=BINGEN(P0,P1,1);
+
+         J_ITER=J_ITER-1;
+         ENDO;
+
+
+   RETP(S_T);
+   ENDP;
+@++++++++++++++++++++++++++++++++++++++++++++++++++++++++@
+
+@========================================================================@
+@========================================================================@
+ /* ADDPROCS.GSI */
+ /* compiled file used in Albert and Chib (JBES, 1993, 11,1-15) */
+   /* please contact Siddhartha Chib at chib@olin.wustl.edu
+            if there are problems*/
+
+proc rndc(a);       /* chisquare */
+local x,w;
+
+a = a/2;
+w= rg1(a);
+x = w * 2;
+
+retp(x);
+endp;
+
+
+proc rndb(a,b);                /* beta */
+local x,a1n,a1d;
+
+a1n = rg1(a);
+a1d = rg1(b);
+x = a1n / (a1n + a1d);
+
+retp(x);
+endp;
+
+
+proc rg1(a);
+local x,j,w,u;
+
+if a gt 1;
+x = rg2(a);
+elseif a lt 1;
+a = a + 1;
+u = rndu(1,1);
+x = rg2(a)*u^(1/a);
+elseif a == 1;
+x = -ln(rndu(1,1));
+endif;
+
+retp(x);
+endp;
+
+
+proc rg2(a);
+local gam,accept,b,c,j,x,z,u,v,w,y;
+
+b = a-1;
+c = 3*a - .75;
+accept = 0;
+do while accept == 0;
+u = rndu(1,1);
+v = rndu(1,1);
+w = u*(1-u);
+y = sqrt(c/w)*(u-.5);
+x = b+y;
+if x ge 0;
+z = 64*(w^3)*(v^2);
+accept = z le ( 1-(2*y^2)/x );
+if accept == 0;
+accept = ln(z) le 2*(b*ln(x/b) - y);
+endif;
+endif;
+endo;
+
+retp(x);
+endp;
+
+
+@================================================@
+/*
+proc  gendiff(z,rho);
+local ztrim,i,zgdiff;
+
+i = 1;
+ztrim = trimr(z,r,0);
+zgdiff = ztrim;
+do while i le r;
+zgdiff = zgdiff - rho[i]*trimr(z,r-i,i);
+i = i + 1;
+endo;
+retp(zgdiff);
+endp;
+*/
+
+
+proc pdfn1(yt,m,s2);
+local z,p;
+z = (yt - m)/sqrt(s2);
+p = pdfn(z)/sqrt(s2);
+retp(p);
+endp;
+trace 0;
+
+proc bingen(p0,p1,m);
+local pr0,s,u;
+
+pr0 = p0/(p0+p1);       /* prob(s=0) */
+u = rndu(m,1);
+s = u .ge pr0;
+
+retp(s);
+endp;
+
+proc markov(a,b,ss0,n);
+local s,u,i ;
+
+s = zeros(n,1);
+s[1,1] = ss0;
+
+i = 2;
+ do while i le n;
+
+if s[i-1,1] == 0;
+u = rndu(1,1);
+
+if u le a ;
+s[i,1] = 1;
+else;
+s[i,1] = 0;
+endif;
+
+elseif s[i-1,1] == 1;
+u = rndu(1,1);
+
+if u le (1-b) ;
+s[i,1] = 1;
+else;
+s[i,1] = 0;
+endif;
+
+endif;
+
+i = i + 1;
+endo;
+retp(s);
+endp;
+
+     proc switchg(s,g);
+     local n,m,switch,t,st1,st;
+
+     n = rows(s);
+     m = rows(g);
+     switch = zeros(m,m);     /* to store the transitions */
+
+     t = 2;
+     do while t le n;
+
+     st1 = s[t-1];
+     st = s[t];
+     switch[st1,st] = switch[st1,st] + 1;
+     t = t+ 1;
+     endo;
+
+     retp(switch);
+     endp;
+
+

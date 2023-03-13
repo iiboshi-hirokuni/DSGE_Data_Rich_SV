@@ -1,0 +1,183 @@
+
+/****************************
+   draw of hist decomp
+***************************/
+
+ n=rows(yy); 
+
+ mean_decomp = decomp_sum/(floor(nsim/kk))/(nblocks-burnin_blocks);
+
+titlestr = "Consumption " $|
+           "Wage " $|
+		   "Labor " $|
+           "Nominal Interest Rate " $|
+		   "Inflation " $|  
+           "Output  " $|
+           "Spread"  $| 
+           "Bank Leverage " $|
+		   "Investment " $|
+           "Firm Leverage " $|                  
+           "Borrowing Rate" ;  
+
+graphset;
+    begwind;
+    margin(0,0,0.2,0.2);
+    window(4,3,0);           @@
+    fonts("microb");
+    _ptitlht = 0.4;
+    _paxht = 0.4;
+    _pnumht = 0.3;
+    @_pcolor = {4 4 4};@
+    _pltype = {6 1 1};
+    _protate = 0; 
+    _plctrl = 0;
+    _plwidth = 5.5;
+    _psymsiz = 5;
+    _plegstr = "Mean\00090% HPD(U)\00090% HPD(L)";
+
+       
+       y_ind = 1;
+       do until y_ind > 11;
+       /* iterate over endogenous variables */
+          
+          title(titlestr[y_ind]);
+
+          if (datasel ==2) or (datasel ==3);
+              xtics(1985, 2010,2,4);
+              x=seqa(0/4,1/4, rows(yy)-1)+1985;
+          
+          endif;
+                                    
+          xy(x, yy[2:n,y_ind]~mean_decomp[.,y_ind]
+                 ~mean_decomp[.,y_ind+11]~mean_decomp[.,y_ind+22]
+                  ~mean_decomp[.,y_ind+33]~mean_decomp[.,y_ind+44]
+                 ~mean_decomp[.,y_ind+55]~mean_decomp[.,y_ind+66]
+                  ~mean_decomp[.,y_ind+77] );
+          
+
+          nextwind;
+                 
+          y_ind = y_ind+1;
+       endo;
+       
+    
+    endwind;   
+
+/**************************************************/
+
+
+shockstr = "Productivity_Shock " $|
+           "Preference_Shock " $|
+           "Firm_Net_Worth_Shock" $|
+           "Bank_Net_wortk_Shock" $| 
+           "Government_Spending_Shock " $|
+           "Investment_Shock " $|
+           "Labor_Supply_Shock " $|          
+           "Monetary_Policy_Shock " ;  
+
+
+if mhrun == "2";
+     output file= c:\dge_BGG_GK\results\hist_decomp_bgg.txt reset; 
+elseif mhrun == "3";
+     output file= c:\dge_BGG_GK\results\hist_decomp_a.txt reset; 
+elseif mhrun == "4";
+   output file= c:\dge_BGG_GK\results\hist_decomp_b.txt reset;
+elseif mhrun == "5";
+   output file= c:\dge_BGG_GK\results\hist_decomp_c.txt reset;
+endif; 
+
+
+ output on;
+
+    y_ind = 1;
+       do until y_ind > 11;
+       /* iterate over endogenous variables */
+          
+          titlestr[y_ind]; 
+          " " titlestr[y_ind] shockstr[1:3]';
+          yy[2:n,y_ind]~mean_decomp[.,y_ind]~mean_decomp[.,y_ind+11]~mean_decomp[.,y_ind+22];                 
+          
+          " " shockstr[4:6]';
+          mean_decomp[.,y_ind+33]~mean_decomp[.,y_ind+44]~mean_decomp[.,y_ind+55];          
+
+         " "  shockstr[7:8]';
+         mean_decomp[.,y_ind+66]~mean_decomp[.,y_ind+77] ;
+         
+
+         y_ind = y_ind+1;
+      endo;
+
+ output off; 
+
+
+end;
+
+/*********************************
+    Drawing Graph of Shocks  
+**********************************/
+
+  meanshock = shocksum/(floor(nsim/kk))/(nblocks-burnin_blocks);
+
+graphset;
+    begwind;
+    margin(0,0,0.2,0.2);
+    window(3,3,0);           @@
+    fonts("microb");
+    _ptitlht = 0.4;
+    _paxht = 0.4;
+    _pnumht = 0.3;
+    @_pcolor = {4 4 4};@
+    _pltype = {6 1 1};
+    _protate = 0; 
+    _plctrl = 0;
+    _plwidth = 5.5;
+    _psymsiz = 5;
+    _plegstr = "Mean\00090% HPD(U)\00090% HPD(L)";
+
+       
+       y_ind = 1;
+       do until y_ind > 9;
+       /* iterate over endogenous variables */
+          
+          title(shockstr[y_ind]);
+
+          if (datasel ==2) or (datasel == 3);
+              xtics(1980, 2000,2,4);
+              x=seqa(0/4,1/4, rows(meanshock))+1980;
+          else;
+              xtics(1947, 2005,2,4);
+              x=seqa(0/4,1/4, rows(meanshock))+1947;
+          endif;
+          
+          xy(x, meanshock[.,y_ind] );
+
+          nextwind;
+                 
+          y_ind = y_ind+1;
+       endo;
+
+      endwind; 
+
+if mhrun == "2";
+     output file= c:\dge_sw\results\sample_shock_sw.txt reset; 
+elseif mhrun == "3";
+     output file= c:\dge_sw\results\sample_shock_A.txt reset; 
+elseif mhrun == "4";
+   output file= c:\dge_sw\results\sample_shock_b.txt reset;
+elseif mhrun == "5";
+   output file= c:\dge_sw\results\sample_shock_c.txt reset;
+endif; 
+
+output on;
+
+  shockstr[1:4]';
+   meanshock[.,1:4];
+
+   shockstr[5:8]';
+   meanshock[.,5:8];
+   
+   shockstr[9];
+   meanshock[.,9];
+
+output off; 
+

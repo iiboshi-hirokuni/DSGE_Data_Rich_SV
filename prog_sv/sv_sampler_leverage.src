@@ -1,0 +1,319 @@
+/*******************************************************
+
+  sv model with leverage effect
+ 
+ Based on Omori, Chib, Shephard, Nakajima
+(2007, Journal of Econometrics, Vol 140, p425-449) 
+
+written by Iiboshi  on May/4/2012
+
+*********************************************************/
+/*****************************************************/
+
+proc (3) = sv_mh(y,state, para );
+
+local  postnew, postold, likenew, likeold, paranew, paraold, i, statedraw,
+       cc_sv, sigtdraw, log_lik, yydraw, flag, r, rej, sigt, t;	   
+
+    t = nobs-1; //cols(y); nobs;
+   sigt = zeros(t,nshock);
+
+   for i(1,cols(para),1);
+      paraold   = para[.,i];
+	  statedraw = state[.,i]';
+
+     {sigtdraw, statedraw, log_lik,yydraw}=stochastic_vola(y[i,.], statedraw, paraold);
+ 
+      // new para
+      flag = 0;  cc_sv = 0.03; rej =0;
+      do until flag > 0;
+	      paranew = paraold + cc_sv*(eye(4)*rndn(4,1));	 
+		     // papanew[2]=0; //no leverage effect
+	 	 
+		  if (paranew[1] > 0) and (abs(paranew[2]) < 0.99 ) and (abs(paranew[3]) < 0.99 );
+		      flag = 1;
+	      endif;
+      endo;	  
+ 
+       {likeold}=sv_lik(y[.,i]', statedraw, paraold); 	
+       {likenew}=sv_lik(y[.,i]', statedraw, paranew);
+	
+    	// MH algorithm 
+	    postnew = likenew;  postold = likeold; 	
+	
+	    r = minc(1 | exp( postnew - postold));  //print(likenew~likeold~r);
+  
+       if rndu(1,1) < r;
+        /* Accept proposed jump*/
+           paraold = paranew;
+           postold = postnew;
+           likeold = likenew;
+       else;
+          /* Reject proposed jump*/   
+             rej = 1;
+	   endif;
+		
+	   //xy(t,sigtdraw');	
+	   state[.,i]=statedraw';
+	   para[.,i] = paraold; 
+	   sigt[.,i]=sigtdraw'; 
+		 
+    endfor;
+
+retp(sigt', para, state );
+endp;
+
+/*****************************************************/
+
+proc (4) =stochastic_vola(y, statedraw, para);
+	
+local yss, yss1, y2, q_s, m_s, u2_s,a_s, b_s,i,j,jj,
+      vart, imix, Zs, sigma, rho, phi, mu,eta, epsilon, 
+	  Sigtdraw,log_lik,g,yydraw,t, Ht,
+	  temp1, prw,cprw, trand, sigtemp, sigt, sigttemp, sse_2, 
+	  Winv, Winvdraw, W_prmean, W_prvar, nn, b0, v0, v0_, d0_, d, c, t2,
+	  sv_vola, dt, mut, temp_std;
+	
+  q_s =(0.00609| 0.04775| 0.13057| 0.20674| 0.22715| 0.18842| 0.12047|0.05591|0.01575|0.00115);  // probabilities
+  m_s =(1.92677| 1.34744| 0.73504| 0.02266| -0.85173|-1.97278| -3.46788|-5.55246|-8.68384|-14.65000); // means
+  u2_s=(0.11265| 0.17788| 0.26768| 0.40611|0.62699| 0.98583| 1.57469|2.54498|4.16591|7.33342);    // variances
+  a_s= (1.01418|1.02248|1.03403|1.05207|1.08153|1.13114|1.21754|1.37454|1.68327|2.50097);
+  b_s= (0.50710|0.51124|0.51701|0.52604|0.54076|0.56557|0.60877|0.68728|0.84163|1.25049);  
+	   
+  t = cols(y);  y2 = y^2;   yss = zeros(t,1);    yss = ln(y2' + 0.001);
+      
+  sigma = para[1]; rho = para[2]; phi=para[3]; mu=para[4];   
+ 
+  dt = zeros(t,1);
+   for i (1,t,1);
+    if y[i]>0;
+	    dt[i]=1;
+	else; dt[i] =-1;
+    endif; 	
+   endfor;
+     	
+	
+   
+    // In order to draw the log-volatilies, substract the mean and variance
+    // of the 10-component mixture of Normal approximation to the measurement
+    // error covariance
+    vart = zeros(t*2,2);
+	mut = zeros(t*1,2);
+    temp_std = zeros(2,2);
+   
+    for i (1,t,1);
+            imix = statedraw[i];
+			temp_std[1,1]= sqrt(u2_s[imix]);
+			temp_std[2,1]= dt[i]*rho*sigma*b_s[imix]*sqrt(u2_s[imix])*exp(m_s[imix]/2);
+            temp_std[2,2]= sigma*sqrt(1-rho^2);
+			vart[i*2-1:i*2,1:2] = temp_std*temp_std';			
+			mut[i,1] = m_s[imix] ;
+			mut[i,2] = mu*(1-phi)+dt[i]*rho*sigma*a_s[imix]*exp(m_s[imix]/2);
+    endfor;
+    
+		
+    // Sigtdraw is a draw of the diagonal log-volatilies, which will give us SIGMA(t)
+    Zs = 1~0; Ht = 0.001^2; g = (0~1|0~phi); b0 =1|1; v0 = eye(2); 	 
+	{Sigtdraw,log_lik} = carter_kohn(yss',Zs,g,Ht,vart,mut,2,1,t,b0,v0);
+	
+	 yydraw = sigtdraw[1,.];
+	 Sigtdraw = Sigtdraw[2,.];
+		 	
+		
+    // Next draw statedraw (chi square approximation mixture component) conditional on Sigtdraw
+    // This is used to update at the next step the log-volatilities Sigtdraw
+    prw = zeros(rows(q_s),1);
+	
+	   for i (1,t-1,1);
+            for j (1,rows(m_s),1);
+				epsilon = yss[i] - Sigtdraw[i];
+				eta    = (Sigtdraw[i+1]-mu)-phi*(Sigtdraw[i]-mu);
+				
+                temp1 = 1/sqrt(u2_s[j])
+				      *exp(-0.5*((( epsilon- m_s[j] )^2)/u2_s[j])
+					  -(eta-dt[i]*rho*sigma*exp(m_s[j]/2)*(a_s[j]+b_s[j]*(epsilon-m_s[j])))^2/(sigma^2*(1-rho^2)) );
+					  
+                prw[j,1] = q_s[j,1]*temp1;
+            endfor;
+            prw = prw./sumc(prw);
+            cprw = cumsumc(prw);
+            trand = rndu(1,1);
+            if trand < cprw[1,1]; imix=1;
+            elseif trand < cprw[2,1]; imix=2;
+            elseif trand < cprw[3,1]; imix=3;
+            elseif trand < cprw[4,1]; imix=4;
+            elseif trand < cprw[5,1]; imix=5;
+	    	elseif trand < cprw[6,1]; imix=6;
+			elseif trand < cprw[7,1]; imix=7;
+            elseif trand < cprw[8,1]; imix=8;
+            elseif trand < cprw[9,1]; imix=9;
+            else;  imix=10; 
+            endif;
+            statedraw[i]=imix;  // this is a draw of the mixture component index
+      endfor;    
+   
+		   
+	sv_vola = exp(0.5*Sigtdraw);
+
+    
+//retp(sigtdraw, statedraw, log_lik);	
+retp(sv_vola, statedraw, log_lik, yydraw');
+endp;
+
+/********************************************/
+
+proc (1) =sv_lik(y, statedraw, para);
+	
+local yss, yss1, y2, q_s, m_s, u2_s,a_s, b_s,i,j,jj,
+      vart, imix, Zs, sigma, rho, phi, mu,eta, epsilon, 
+	  Sigtdraw,log_lik,g,yydraw, ht,
+	  temp1, prw,cprw, trand, sigtemp, sigt, sigttemp, sse_2, 
+	  Winv, Winvdraw, W_prmean, W_prvar, nn, b0, v0, v0_, d0_, d, c, t2,
+	  sv_vola, dt, mut, temp_std,t ;
+	
+  q_s =(0.00609| 0.04775| 0.13057| 0.20674| 0.22715| 0.18842| 0.12047|0.05591|0.01575|0.00115);  // probabilities
+  m_s =(1.92677| 1.34744| 0.73504| 0.02266| -0.85173|-1.97278| -3.46788|-5.55246|-8.68384|-14.65000); // means
+  u2_s=(0.11265| 0.17788| 0.26768| 0.40611|0.62699| 0.98583| 1.57469|2.54498|4.16591|7.33342);    // variances
+  a_s= (1.01418|1.02248|1.03403|1.05207|1.08153|1.13114|1.21754|1.37454|1.68327|2.50097);
+  b_s= (0.50710|0.51124|0.51701|0.52604|0.54076|0.56557|0.60877|0.68728|0.84163|1.25049);  
+	   
+   t = cols(y);  y2 = y^2;   yss = zeros(t,1);    yss = ln(y2' + 0.001);
+   sigma = para[1]; rho = para[2]; phi=para[3]; mu=para[4];   
+ 
+   dt = zeros(t,1);
+   for i (1,t,1);
+    if y[i]>0;
+	    dt[i]=1;
+	else; dt[i] =-1;
+    endif; 	
+   endfor;
+  
+    vart = zeros(t*2,2);
+	mut = zeros(t*1,2);
+    temp_std = zeros(2,2);
+   
+    for i (1,t,1);
+            imix = statedraw[i];
+			temp_std[1,1]= sqrt(u2_s[imix]);
+			temp_std[2,1]= dt[i]*rho*sigma*b_s[imix]*sqrt(u2_s[imix])*exp(m_s[imix]/2);
+            temp_std[2,2]= sigma*sqrt(1-rho^2);
+			vart[i*2-1:i*2,1:2] = temp_std*temp_std';			
+			mut[i,1] = m_s[imix] ;
+			mut[i,2] = mu*(1-phi)+dt[i]*rho*sigma*a_s[imix]*exp(m_s[imix]/2);
+    endfor;
+    		
+    // Sigtdraw is a draw of the diagonal log-volatilies, which will give us SIGMA(t)
+    Zs = 1~0; Ht = 0.001^2; g = (0~1|0~phi); b0 =1|1; v0 = eye(2); 	 
+	{log_lik} = kalman_filter(yss',Zs,g,Ht,vart,mut,2,1,t,b0,v0);
+			 	
+		
+retp(log_lik);
+endp;
+
+/***************************************/
+/// Carter and Kohn (1994), On Gibbs sampling for state space models.
+// Kalman Filter
+/***************************************/
+
+proc (2) = carter_kohn(y,Z,g,Ht,Qt,mut,m,p,t,B0,V0);
+	
+local bp, Vp, bt, Vt, log_lik, R, H, cfe, f, inv_f, mu, 
+      btt, Vtt, i, bf, bdraw, bmean, bvar, b1; 
+	 
+bp = B0+mut[1,.]'; 
+Vp = V0+ Qt[1:2,.];
+bt = zeros(t,m);
+Vt = zeros(m^2,t);
+
+log_lik = 0;
+
+for i (1,t,1);
+    R = Ht;                   
+    H = Z;                  
+    cfe = y[i] - H*bp;    // conditional forecast error
+    f = H*Vp*H' + R;       // variance of the conditional forecast error
+    inv_f = inv(f);
+	
+    log_lik = log_lik -0.5*p*ln(2*pi)-0.5*ln(det(f)) - 0.5*cfe'*inv_f*cfe;
+    btt = bp + Vp*H'*inv_f*cfe;
+    Vtt = Vp - Vp*H'*inv_f*H*Vp;
+	
+    if i < t;
+        bp = g*btt + mut[i+1,.]';            
+        Vp = g*Vtt*g' + Qt[i*m+1:(i+1)*m,.]; 
+    endif;
+	
+    bt[i,.] = btt';
+    Vt[.,i] = reshape(Vtt,m^2,1);
+endfor;
+
+// draw Sdraw(T|T) ~ N(S(T|T),P(T|T))
+bdraw = zeros(t,m); 
+bdraw[t,.] =btt' + rndn(1,m)*chol(Vtt);  //= mvnrnd(btt,Vtt,1);
+
+// Backward recurssions
+for i (1,t-1,1);
+    bf = bdraw[t-i+1,.]';
+    btt = bt[t-i,.]';
+    Vtt = reshape(Vt[.,t-i+1],m,m);
+    f = g*Vtt*g' + Qt[(t-i)*m+1:(t-i+1)*m,.];
+    inv_f = inv(f);
+	
+    cfe = bf - G*btt - mut[t-i+1,.]';  //
+    
+	bmean = btt + Vtt*g'*inv_f*cfe;
+    bvar = Vtt - Vtt*g'*inv_f*g*Vtt;
+	
+    bdraw[t-i,.] =bmean' + rndn(1,m)*chol(bvar); //= mvnrnd(bmean,bvar,1);
+	
+endfor;
+
+b1 = meanc(bdraw);
+
+//bdraw = bt'; 
+bdraw = bdraw';
+
+
+retp(bdraw[1,.]|b1[2]~bdraw[2,1:t-1],log_lik);
+endp;
+
+/********************/
+proc (1) = kalman_filter(y,Z,g,Ht,Qt,mut,m,p,t,B0,V0);
+	
+local bp, Vp, bt, Vt, log_lik, R, H, cfe, f, inv_f, mu, 
+      btt, Vtt, i, bf, bdraw, bmean, bvar, b1; 
+	 
+bp = B0+mut[1,.]'; 
+Vp = V0+ Qt[1:2,.];
+bt = zeros(t,m);
+Vt = zeros(m^2,t);
+
+log_lik = 0;
+
+for i (1,t,1);
+    R = Ht;                   
+    H = Z;                  
+    cfe = y[i] - H*bp;    // conditional forecast error
+    f = H*Vp*H' + R;       // variance of the conditional forecast error
+    inv_f = inv(f);
+	
+    log_lik = log_lik -0.5*p*ln(2*pi)-0.5*ln(det(f)) - 0.5*cfe'*inv_f*cfe;
+    btt = bp + Vp*H'*inv_f*cfe;
+    Vtt = Vp - Vp*H'*inv_f*H*Vp;
+	
+    if i < t;
+        bp = g*btt + mut[i+1,.]';            
+        Vp = g*Vtt*g' + Qt[i*m+1:(i+1)*m,.]; 
+    endif;
+	
+    bt[i,.] = btt';
+    Vt[.,i] = reshape(Vtt,m^2,1);
+endfor;
+
+// draw Sdraw(T|T) ~ N(S(T|T),P(T|T))
+bdraw = zeros(t,m); 
+bdraw[t,.] =btt' + rndn(1,m)*chol(Vtt);  //= mvnrnd(btt,Vtt,1);
+
+retp(log_lik);
+endp;
+
