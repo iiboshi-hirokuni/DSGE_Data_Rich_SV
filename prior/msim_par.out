@@ -1,0 +1,47 @@
+0.5
+0.25
+1.4
+0.5
+0.04
+0.6
+0.6
+0.8
+0.6
+0.4
+2.0
+0.04
+0.85
+0.85
+0.85
+0.85
+0.85
+0.85
+0.85
+1.93
+1
+0.25
+0.25
+0.7
+2.59
+1.0
+0.19
+0.1
+0.1
+0.1
+0.1
+0.1
+0.1
+0.1
+0.1
+0.1
+0.1
+0.1
+
+
+/* Parameters
+**  kappa, h, sigma_c, sigma_L, phi, iota_p iota_w  
+**  theta_p theta_w, rho_r, mu_pi, mu_y,  
+**  rho_a, rho_c, rho_k, rho_e, rho_f, rho_g, rho_l,
+**  e_a, e_c, e_e, e_f, e_g, e_k, e_l, e_r
+**  u_L, u_S, u_LevF, u_Pi, u_LevE, u_RE 
+*/

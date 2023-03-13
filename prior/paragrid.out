@@ -1,0 +1,43 @@
+0      5 
+0      1
+0      4
+0      4
+0      0.2
+0      1
+0      1
+0      1
+0      1
+0      1
+0      3
+-1      1
+0      1
+0      1
+0      1
+0      1
+0      1
+0      1 
+0      1
+0      5
+0      5
+0      5
+0      5
+0      5
+0      5
+0      5
+0      5
+0      1
+0      1
+0      1
+0      1
+0      1
+0      1
+
+/* Grid Range
+** 
+** Parameters
+**  kappa, h, sigma_c, sigma_L, phi, iota_p iota_w  
+**  theta_p theta_w, rho_r, mu_pi, mu_y,  
+**  rho_a, rho_c, rho_k, rho_e, rho_f, rho_g, rho_l,
+**  e_a, e_c, e_e, e_f, e_g, e_k, e_l, e_r
+**  u_L, u_S, u_LevF, u_Pi, u_LevE, u_RE
+*/

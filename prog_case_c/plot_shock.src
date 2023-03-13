@@ -1,0 +1,140 @@
+
+/****************************
+   draw of hist decomp
+***************************/
+
+n=rows(yy); 
+
+mean_decomp = decomp_sum/(floor(nsim/kk))/(nblocks-burnin_blocks);
+
+titlestr = "Consumption " $|
+           "Real_Wage " $|  
+           "Labor " $|
+           "Nominal_Interest_Rate " $| 
+           "Inflation " $|   
+           "Output " $| 
+           "Spread"$|
+           "Bank_Leverage " $|       
+           "Investment " $|
+           "Firm_Leverage " $|     
+           "Borrowing_Rate" ;
+
+graphset;
+    begwind;
+    margin(0,0,0.2,0.2);
+    window(4,3,0);           @@
+    fonts("microb");
+    _ptitlht = 0.4;
+    _paxht = 0.4;
+    _pnumht = 0.3;
+    @_pcolor = {4 4 4};@
+    _pltype = {6 1 1};
+    _protate = 0; 
+    _plctrl = 0;
+    _plwidth = 5.5;
+    _psymsiz = 5;
+    _plegstr = "Mean\00090% HPD(U)\00090% HPD(L)";
+
+  if mhrun=="5";     
+       y_ind = 1;
+	   y_ind_ind = zeros(11,1);
+	   y_ind_ind[1]=1;
+	   y_ind_ind[2]=5;
+	   y_ind_ind[3]=9;
+	   y_ind_ind[4]=13;
+	   y_ind_ind[5]=14;
+	   y_ind_ind[6]=18;
+	   y_ind_ind[7]=22;
+	   y_ind_ind[8]=26;
+	   y_ind_ind[9]=30;
+	   y_ind_ind[10]=34;
+	   y_ind_ind[11]=37;
+
+ elseif mhrun=="3";
+       y_ind = 1;
+	   y_ind_ind = zeros(11,1);
+	   y_ind_ind[1]=1;
+	   y_ind_ind[2]=2;
+	   y_ind_ind[3]=3;
+	   y_ind_ind[4]=4;
+	   y_ind_ind[5]=5;
+	   y_ind_ind[6]=6;
+	   y_ind_ind[7]=7;
+	   y_ind_ind[8]=8;
+	   y_ind_ind[9]=9;
+	   y_ind_ind[10]=10;
+	   y_ind_ind[11]=11;
+endif;	 
+
+
+//       do until y_ind > 11;
+       /* iterate over endogenous variables */
+/*          
+          title(titlestr[y_ind]);
+
+          if (datasel ==2) or (datasel ==3);
+              xtics(1985, 2010,4,4);
+              x=seqa(0/4,1/4, rows(yy)-1)+1985;
+          
+          endif;
+                                    
+          xy(x, yy[2:n,y_ind_ind[y_ind]]~mean_decomp[.,y_ind_ind[y_ind]]
+                 ~mean_decomp[.,y_ind_ind[y_ind]+ndata]~mean_decomp[.,y_ind_ind[y_ind]+ndata*2]
+                 ~mean_decomp[.,y_ind_ind[y_ind]+ndata*3]~mean_decomp[.,y_ind_ind[y_ind]+ndata*4]
+                 ~mean_decomp[.,y_ind_ind[y_ind]+ndata*5]~mean_decomp[.,y_ind_ind[y_ind]+ndata*6]
+                 ~mean_decomp[.,y_ind_ind[y_ind]+ndata*7] );
+          
+          nextwind;
+                 
+          y_ind = y_ind+1;
+       endo;
+    
+    endwind;   
+*/
+
+/**************************************************/
+
+shockstr = "Productivity_Shock " $|
+           "Preference_Shock " $|
+           "Firm_Net_Worth_Shock" $|
+           "Bank_Net_wortk_Shock" $| 
+           "Government_Spending_Shock " $|
+           "Investment_Shock " $|
+           "Labor_Supply_Shock " $|          
+           "Monetary_Policy_Shock " ;  
+
+if mhrun == "2";
+     output file= c:\dge_BGG_GK\prog_case_c\results\hist_decomp_bgg.txt reset; 
+elseif mhrun == "3";
+     output file= c:\dge_BGG_GK\prog_case_c\results\hist_decomp_a.txt reset; 
+elseif mhrun == "4";
+   output file= c:\dge_BGG_GK\prog_case_c\results\hist_decomp_b.txt reset;
+elseif mhrun == "5";
+   output file= c:\dge_BGG_GK\prog_case_c\results\hist_decomp_c.txt reset;
+endif; 
+
+
+output on;
+
+    y_ind = 1;
+       do until y_ind > 11;
+       /* iterate over endogenous variables */
+          
+          titlestr[y_ind]; 
+          " " titlestr[y_ind] shockstr[1:3]';
+          yy[2:n,y_ind_ind[y_ind]]~mean_decomp[.,y_ind_ind[y_ind]]~mean_decomp[.,y_ind_ind[y_ind]+ndata]~mean_decomp[.,y_ind_ind[y_ind]+ndata*2];                 
+          
+          " " shockstr[4:6]';
+          mean_decomp[.,y_ind_ind[y_ind]+ndata*3]~mean_decomp[.,y_ind_ind[y_ind]+ndata*4]~mean_decomp[.,y_ind_ind[y_ind]+ndata*5];          
+
+         " "  shockstr[7:8]';
+          mean_decomp[.,y_ind_ind[y_ind]+ndata*6]~mean_decomp[.,y_ind_ind[y_ind]+ndata*7] ;
+         
+
+         y_ind = y_ind+1;
+      endo;
+
+ output off; 
+
+end;
+

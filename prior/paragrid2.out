@@ -1,0 +1,37 @@
+0      1 
+0      3
+0      4
+0      12
+0      2
+0      1
+0      1
+0      1
+0      1
+0      1
+0      1
+0      2
+-0.2      0.3
+0      1
+0      1
+0      1
+0      1
+0      1 
+0      3
+0      3
+0      3
+0      3
+0      3
+0      3
+0      3
+0      3
+0      3
+
+/* Grid Range
+** 
+** Parameters
+**  h,  sigma_c, sigma_L,  phi, Rk, gam_p, 
+**  gam_w, psi, phi_0 , xi_w xi_p
+**  rho_m, mu_pi, mu_y
+**  rho_c rho_i rho_l rho_z rho_g
+**  e_c, e_inv, e_q, e_L, e_w, e_z, e_p, e_g, e_m
+*/
