@@ -1,0 +1,274 @@
+/* This library contains the following procedures
+**
+** proc(4) = evaldsge(para,msel)
+** Modifications: 10/12/4 change for BGGGK and measurement error, add HH and psi (for measurement error), 10/12/5 correct 112 ZZ = ZZ~(-1)*psi.*ZZ; (from ZZ~psi.*ZZ),10/12/8 when indeterminacy, caluculate loglh (no eofevalsoe),10/12/9 reverse10/12/8, 10/12/9 BIG change!! ystar is mistake(Data is changed in sampling)!! delete psi
+*/
+
+/* Global variables
+*/
+declare matrix _FIX1, _FIX2;
+
+proc (4) = evaldsge(para,msel,YY);
+/* This procedure evaluates the likelihood function of the 
+** monetary DSGE model
+** retcode = -1 : non existence                
+**         = 0  : existence and uniqueness     
+**         = 1  : existence and non-uniqueness
+*/
+local npara, para1, para2, nobs, loglh, loglhzero, retcode,
+      obsmean, obsvar, nstate, shock, nseries, ystar,
+      T1,TC,TEPS,TETA,RC, w, 
+      TT, RR, DD, ZZ,  QQ, VV, HH,
+      nu_save, ft_save, kg_save,at_save, pt_save,
+      r_t, n_t,l_t, w_t,c_t, eta, k_g,
+      t, At, Pt, At1, Pt1, Phat, yhat, nu, Ft, alphahat, kentry;
+
+/* Parameters
+**  kappa, h, sigma_c, sigma_L, phi, iota_p iota_w  
+**  theta_p theta_w, rho_r, mu_pi, mu_y,  
+**  rho_a, rho_c, rho_k, rho_e, rho_f, rho_g, rho_l,
+**  e_a, e_c, e_e, e_f, e_g, e_k, e_l, e_r
+**  uR  uY  uC  uK  uPi  uW  uL  uRE  uLevE  uLevF  uS 
+*/
+
+npara   = rows(para);
+retcode = 0;
+
+
+/* solve the DSGE model
+*/
+{T1,TC,TEPS,RC} = dsgesolv(para);
+
+nseries  = cols(YY);
+nstate   = cols(T1);
+
+nobs      = rows(YY);
+loglh     = 0;
+loglhzero = -1E8;
+obsmean   = zeros(nobs,cols(YY));
+obsvar    = zeros(nobs,cols(YY));
+nu_save   = zeros(nseries,nobs);
+ft_save   = zeros(nseries,nseries*nobs); 
+kg_save   = zeros(nstate,nseries*nobs);
+pt_save   = zeros(nstate,nstate*nobs); 
+shock     = zeros(nobs,nshock);
+
+if (RC[1] == 1) AND (RC[2]==1);
+   /* determinacy */
+   retcode[1] = 0;
+   TT = T1;
+   RR = TEPS;
+   
+elseif (RC[1] == 1) AND (RC[2]==0) ;
+   /* indeterminacy */
+   retcode[1] = 1;
+   TT = T1;
+   RR = TEPS;
+   
+   //loglh = loglhzero;
+   //goto eofevalsoe;
+   
+else;
+   /* no equilibrium exists, numerical problems */
+   retcode[1] = RC[1];
+   loglh = loglhzero;
+   goto eofevalsoe;
+
+endif;
+     
+/* create system matrices for state space model
+*/
+
+ZZ      = zeros(11,nstate);
+ZZ[1,4] = 1;               /*  nominal rate  */
+ZZ[2,7] = 1;               /* output gap */
+ZZ[3,1] = 1;               /*  consumption */
+ZZ[4,19] = 1;               /* investment */            
+ZZ[5,5] = 1;               /* inflation */
+ZZ[6,2] = 1;               /* wage */
+ZZ[7,3] = 1;              /*  labor */  
+ZZ[8,23] = 1;              /*  entre. borrowing rate */ 
+ZZ[9,18] = 1;               /*  bank's leverage  */
+ZZ[10,22] = 1;             /*  entre.'s leverage */  
+ZZ[11,9] = 1;            /*  spread */  
+
+
+DD      = zeros(11,1);      
+
+HH = createHH(para[28:38,1]);
+QQ = createcov(para[20:27,1]);
+VV = zeros(8,11);
+
+/* Check whether covariance matrix QQ is positive definite
+*/
+
+if sumc(eig(QQ).LE0) > 0;
+   loglh = loglhzero;
+   goto eofevalsoe;
+endif;
+
+/* Verify that I - TT.*.TT is invertible  
+*/
+/*
+trap 1;
+if  scalerr(inv(eye(nstate^2) - (TT.*.TT)) ) NE 0 ;
+    loglh = -1E20;
+    goto eofevalsoe;
+endif;
+trap 0;
+*/
+
+/* We can now define the initial mean and variance for the state vector
+*/
+At = zeros(nstate,1);
+at[1]=yy[1,3]; at[2]=yy[1,6]; at[3]=yy[1,7]; at[4]=yy[1,1];    
+at[5]=yy[1,5]; at[7]=yy[1,2]; at[9]= yy[1,11]; 
+at[18]=yy[1,9]; at[19]=yy[1,4]; at[22]= yy[1,10]; at[23]= yy[1,8]; 
+
+/*
+Pt = reshape(inv(eye(nstate^2) - (TT.*.TT))*vec(RR*QQ*RR'),nstate,nstate);
+Pt = symmat(Pt);
+*/
+
+Pt = dlyap(TT,RR*QQ*RR');
+/* compute likelihood with Kalman filter
+*/
+
+t = 1;
+do until t > nobs;
+
+   At1 = At;
+   Pt1 = Pt;
+
+   /* Forecasting
+   */
+   alphahat = TT*At1;
+   Phat = TT*Pt1*TT' + RR*QQ*RR';
+   yhat = ZZ*alphahat + DD;
+   nu   = YY[t,.] - yhat';
+
+   Ft   = ZZ*Phat*ZZ' + HH + ZZ*RR*VV + (ZZ*RR*VV)';
+   Ft   = 0.5*(Ft + Ft');
+
+   K_g = TT*Phat*ZZ'*inv(Ft);   // Kalman Gain
+   Pt_save[.,(t-1)*nstate+1:t*nstate] = Phat;
+   
+   loglh = loglh -0.5*cols(YY)*ln(2*pi) 
+           - 0.5*ln(det(Ft)) - 0.5*nu*inv(Ft)*nu';
+
+   /* Updating
+   */
+   At = alphahat + (Phat*ZZ' + RR*VV)*inv(Ft)*nu';
+   Pt = Phat - (Phat*ZZ'+RR*VV)*inv(Ft)*(Phat*ZZ'+RR*VV)';
+   
+   /*  store  
+   */
+   obsmean[t,.] = yhat';
+   obsvar[t,.]  = diag(Ft)';
+   nu_save[.,t] = nu';
+   Ft_save[.,(t-1)*nseries+1:t*nseries] = Ft;
+   Kg_save[.,(t-1)*nseries+1:t*nseries] = K_g;
+   
+   t = t+1;
+endo;  
+
+/* state smoothing by Durbin & Koopman (2001, p73-75)
+ */
+
+/*
+r_t = zeros(nstate,1);  N_t = zeros(nstate,nstate); 
+eta = zeros(8,nobs);
+
+t = nobs; 
+do until t < 1;
+nu = nu_save[.,t];
+Ft =  Ft_save[.,(t-1)*nseries+1:t*nseries];
+K_g = Kg_save[.,(t-1)*nseries+1:t*nseries];
+phat = pt_save[.,(t-1)*nstate+1:t*nstate];
+L_t = TT- K_g*ZZ; 
+
+r_t = ZZ'*inv(Ft)*nu + L_t'*r_t;        //4.32
+
+eta[.,t] = QQ*RR'*r_t;      // 4.84
+
+//N_t = ZZ'*inv(Ft)*ZZ + L_t'*N_t*L_t;
+//alpha_t = at_save[.,t] + Phat * r_t;     
+//V_t   = phat - phat*N_t*phat; 
+
+//yhat  = ZZ * alpha_t;
+//obssmooth[t,.] = yhat';
+
+t = t-1;
+endo;
+
+shock = eta';*/
+
+eofevalsoe:   
+retp(real(loglh),retcode,obsmean,obsvar);//, shock );
+endp;
+
+/*************************************************************************/
+proc(1) = createcov(para);
+local omega,eA,eC,eE,eF,eG,eK,eL,eR;
+
+eA   = para[1];
+eC   = para[2];
+eE   = para[3];
+eF   = para[4];
+eG   = para[5];
+eK   = para[6];
+eL   = para[7];
+eR   = para[8];
+
+
+omega = zeros(8,8);
+
+omega[1,1] = eA^2;
+omega[2,2] = eC^2;
+omega[3,3] = eE^2;
+omega[4,4] = eF^2;
+omega[5,5] = eG^2;
+omega[6,6] = eK^2;
+omega[7,7] = eL^2;
+omega[8,8] = eR^2;
+
+
+retp(omega);
+endp;
+
+/***********************************************/
+
+proc(1) = createHH(para);
+local omega,u1, u2, u3,  u4,  u5,  u6,  
+      u7,  u8,  u9,  u10,  u11;
+
+u1   = para[1];
+u2   = para[2];
+u3   = para[3];
+u4   = para[4];
+u5   = para[5];
+u6   = para[6];
+u7   = para[7];
+u8   = para[8];
+u9   = para[9];
+u10   = para[10];
+u11   = para[11];
+
+
+omega = zeros(11,11);
+
+omega[1,1] = u1^2;
+omega[2,2] = u2^2;
+omega[3,3] = u3^2;
+omega[4,4] = u4^2;
+omega[5,5] = u5^2;
+omega[6,6] = u6^2;
+omega[7,7] = u7^2;
+omega[8,8] = u8^2;
+omega[9,9] = u9^2;
+omega[10,10] = u10^2;
+omega[11,11] = u11^2;
+
+retp(omega);
+endp;
+

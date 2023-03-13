@@ -1,0 +1,412 @@
+/*******************************************************
+**   Solve New Keynesian Business Cycle Model
+*******************************************************/
+proc (4) = dsgesolv(para);
+
+local 	beta, delta, alpha, gamma_Ess, gamma_Fss, lambda, psi_W, epsilon, xi_E, xi_F, 
+	kappa, h, sigma_C, sigma_L, fi, iota_P, iota_W, theta_P, theta_W, rho_R, mu_Pi, mu_Y, 
+	rho_A, rho_C, rho_Ak, rho_E, rho_F, rho_G, rho_L, 
+	eA, eC, eE, eF, eG, eK, eL, eR, 
+	Pi_ss, MC_ss, S_ss, RR_Ess, RR_Fss, RR_ss, Nu_ss, Eta_ss, Lev_Fss, gam_w,
+	KoverN_E, KoverY, IoverY, GoverY, CoverY, 
+	neq, nex, nend, T1, TC, T0, TY, M, TZ, TETA, GEV, RC,
+	GAM0, GAM1, C, PSI0, PPI;
+
+/* assign names to parameters
+*/
+
+beta	=	0.995;	// Discount rate
+delta	=	0.025;	// Depreciation rate 
+alpha	=	0.33;	// Effective capital share
+gamma_Ess =	0.972;	// Steady state survival rate of entrepreneurs
+gamma_Fss =	0.972;	// Steady state survival rate of bankers
+lambda	=	0.383;	// Fraction of assets divertable
+psi_W	=	0.05;	// Wage mark-up
+epsilon	=	11;	// Intermediate goods elasticity of substitution
+xi_E	=	0.003;	// Ratio of transer to entering entrepreneurs
+xi_F	=	0.003;	// Ratio of transfer to entering bankers
+
+
+kappa	=	para[1]; 	// Investment adjustment cost parameter
+h	=	para[2];	// Habit parameter
+sigma_C	=	para[3];	// IES parameter
+sigma_L	=	para[4];	// Inverse Frisch elasticity of labor supply 
+fi	=	para[5];	// Elasticity of ex. fin. premium to entrep. lev. ratio
+iota_P	=	para[6];	// Inflation indexation parameter
+iota_W	=	para[7];	// Nominal wage indexation parameter
+theta_P	=	para[8];	// Calvo parameter for goods pricing
+theta_W	=	para[9];	// Calvo parameter for wage pricing
+rho_R	=	para[10];	// Interest rate smoothing parameter 
+mu_Pi	=	para[11];	// Taylor coefficient vis-a-vis inflation rate
+mu_Y	=	para[12];	// Taylor coefficient vis-a-vis output gap 
+rho_A	=	para[13];	// Exogenous AR(1) TFP Shock
+rho_C	=	para[14];	// Exogenous AR(1) Preference shock
+rho_Ak	=	para[15];	// Exogenous AR(1) Investment specific technology shock
+rho_E	=	para[16];	// Exogenous AR(1) Entrepreneur net worth shock
+rho_F	=	para[17];	// Exogenous AR(1) Banking sector net worth shock
+rho_G	=	para[18];	// Exogenous AR(1) Government expenditure shock
+rho_L	=	para[19];	// Exogenous AR(1) Labor supply shock
+eA	=	para[20];	// IID TFP shock
+eC	=	para[21];	// IID Preference shock
+eE	=	para[22];	// IID Entrepreneur net worth shock
+eF	=	para[23];	// IID Banking sector net worth shock
+eG	=	para[24];	// IID Government expenditure shock
+eK	=	para[25];	// IID Investment specific technology shock
+eL	=	para[26];	// IID Labor supply shock
+eR	=	para[27];	// IID Monetary policy shock
+
+// Steady State
+
+Pi_ss = 1.00740;		// Stead state inflation rate
+MC_ss = (epsilon-1)/epsilon;	// Steady state marginal cost
+S_ss = 1.0075;			// Steady state external finance premium
+RR_Ess = 1.0152;		// Steady state Entrepreneur's borrowing rate
+RR_Fss = RR_Ess/S_ss;		// Steady state Banker's lending rate
+RR_ss = 1/beta;			// Steady state gross real deposit rate
+
+Nu_ss = (1 - gamma_Fss) * beta * (RR_Fss - RR_ss) / (1/beta - gamma_Fss);
+				// Steady state coefficient Nu
+Eta_ss = (1 - gamma_Fss)/(1 - beta*gamma_Fss);
+				// Steady state coefficient Eta
+Lev_Fss = Eta_ss/(lambda - Nu_ss);
+				// Steady state leverage ratio for bankers
+// Steady State Ratios 
+
+KoverN_E = 1.919;
+KoverY = (alpha * MC_ss)/(RR_Ess - (1-delta));   
+IoverY = delta * KoverY;
+GoverY = 0.2;
+CoverY = 1 - IoverY - GoverY;
+
+gam_w = (1-beta*theta_w)*(1-theta_w)/(theta_w+(1+psi_w)*theta_w*sigma_L/psi_w ) ;
+
+/* define matrices of canonical system
+*/
+
+neq  = 42;      // Num of stable and unstable Variables
+nex  = 8;       // Num of Shock                        
+nend = 12;      // Num of Unstable Variables           
+
+GAM0	= zeros(neq,neq);
+GAM1	= zeros(neq,neq);
+C	= zeros(neq,1);
+PSI0	= zeros(neq,nex);
+PPI	= zeros(neq,nend);
+
+// 1. Consumption Euler equation: GAM0[1,.], GAM1[1,.] 
+   GAM0[1,1] = 1;
+   GAM0[1,4] = (1-h)/((1+h)*sigma_c);
+   GAM0[1,25] = -(1-h)/((1+h)*sigma_c);
+   GAM0[1,24] = -1/(1+h);
+   GAM0[1,39] = -(1-h)*(1-rho_c)/((1+h)*sigma_c);   
+
+   GAM1[1,1] = h/(1+h);
+
+/*
+GAM0[1,1] = 1; 
+GAM0[1,4] = (1 - h)/((1 + h) * sigma_C); 
+GAM0[1,24] = -1/(1 + h); 
+GAM0[1,25] = -(1 - h)/((1 + h) * sigma_C);
+GAM0[1,39] = -(1 - h) * (1 - rho_C)/((1 + h) * sigma_C); 
+
+GAM1[1,1] =  h/(1 + h);
+*/
+
+
+// 2. Wage setting equation: GAM0[2,.], GAM1[2,.]  
+ GAM0[2,1] = - gam_w/(1+beta)*sigma_c/(1-h);
+   GAM0[2,2] = 1+ gam_w/(1+beta);
+   GAM0[2,3] = - gam_w*sigma_L/(1+beta);
+   GAM0[2,5] = (1+beta*iota_w)/(1+beta);
+   GAM0[2,25] = -beta/(1+beta);
+   GAM0[2,35] = -beta/(1+beta);
+   GAM0[2,40] = - gam_w/(1+beta);
+
+   GAM1[2,1]  = - gam_w/(1+beta)*sigma_c*h/(1-h);
+   GAM1[2,2]  = 1/(1+beta);
+   GAM1[2,5]  = iota_w/(1+beta); 
+
+/*
+GAM0[2,1] = -(1 - beta * theta_W)*(1 - theta_W)
+       /(theta_W + ((1 + psi_W) * theta_W * sigma_L)/psi_W)/(1 + beta)*sigma_C/(1 - h); 
+GAM0[2,2] = 1 + (1 - beta * theta_W)*(1 - theta_W)/(theta_W + ((1 + psi_W) 
+       * theta_W * sigma_L)/psi_W)/(1 + beta);
+GAM0[2,3] = -(1 - beta * theta_W)*(1 - theta_W)/(theta_W + ((1 + psi_W) * theta_W * sigma_L)/psi_W)
+            /(1 + beta) * sigma_L;
+GAM0[2,5] = (1 + beta * iota_W)/(1 + beta); 
+GAM0[2,25] = -beta/(1 + beta);
+GAM0[2,35] = -beta/(1 + beta);
+GAM0[2,40] = -(1 - beta * theta_W)*(1 - theta_W)/(theta_W + ((1 + psi_W) * theta_W * sigma_L)/psi_W)
+              /(1 + beta); 
+
+GAM1[2,1] = -(1 - beta * theta_W)*(1 - theta_W)/(theta_W + ((1 + psi_W) * theta_W * sigma_L)
+           /psi_W)/(1 + beta) * h/(1 - h) * sigma_C; 
+GAM1[2,2] = 1/(1 + beta);
+GAM1[2,5] = iota_W/(1 + beta);
+*/
+
+// 3. Production function: GAM0[3,.] 
+/*
+GAM0[3,3] = -(1 - alpha);
+GAM0[3,7] = 1;
+GAM0[3,10] = -alpha;
+GAM0[3,37] = -1;
+
+// 4. Labor demand: GAM0[4,.] 
+GAM0[4,2] = 1;
+GAM0[4,3] = 1;
+GAM0[4,6] = -1;
+GAM0[4,7] = -1;
+*/
+   GAM0[3,7] = 1;            // Y_t 
+   GAM0[3,37] = -1;          // A_t
+   GAM0[3,10] = -alpha ;     // K_t
+   GAM0[3,3] = -(1-alpha) ;  // L_t
+
+/* 4. Labour demand  */
+   GAM0[4,2] = 1;    // W_t 
+   GAM0[4,6] = -1;   // mc_t  
+   GAM0[4,7] = -1;   // Y_t
+   GAM0[4,3] = 1;    // L_t
+   
+
+// 5. Capital demand: GAM0[5,.]
+GAM0[5,8] = 1;
+GAM0[5,9] = 1;
+GAM0[5,11] = 1;
+GAM0[5,25] = -1;
+GAM0[5,26] = -(1 - (1 - delta)/RR_Ess);
+GAM0[5,27] = 1 - (1 - delta)/RR_Ess;
+GAM0[5,28] = -(1 - delta)/RR_Ess;
+GAM0[5,34] = -(1 - (1 - delta)/RR_Ess);
+
+// 6. Net worth transition of entrepreneur: GAM0[6,.], GAM1[6,.]
+GAM0[6,5] = -RR_Ess * gamma_Ess * (KoverN_E - 1);
+GAM0[6,12] = 1;
+GAM0[6,13] = -RR_Ess * gamma_Ess * KoverN_E;
+GAM0[6,41] = -gamma_Ess * RR_Ess;
+
+GAM1[6,8] = -RR_Ess * gamma_Ess * (KoverN_E - 1);
+GAM1[6,9] = -RR_Ess * gamma_Ess * (KoverN_E - 1);
+GAM1[6,12] = RR_Ess * (gamma_Ess + xi_E);
+
+// 7. Realized marginal return of capital: GAM0[7,.], GAM1[7,.]
+GAM0[7,6] = -(1 - (1 - delta)/RR_Ess);
+GAM0[7,7] = -(1 - (1 - delta)/RR_Ess);
+GAM0[7,10] = 1 - (1 - delta)/RR_Ess;
+GAM0[7,11] = -(1 - delta)/RR_Ess;
+GAM0[7,13] = 1;
+
+GAM1[7,11] = -1;
+
+// 8. Entrepreneur's balance sheet identity: GAM0[8,.]
+GAM0[8,10] = -KoverN_E/(KoverN_E - 1);
+GAM0[8,11] = -KoverN_E/(KoverN_E - 1);
+GAM0[8,12] = 1/(KoverN_E - 1);
+GAM0[8,14] = 1;
+
+// 9. External finance premium: GAM0[9,.] 
+GAM0[9,9] = 1;
+GAM0[9,10] = -fi;
+GAM0[9,11] = -fi;
+GAM0[9,12] = fi;
+
+// 10. Time-varying coefficient nu: GAM0[10,.]
+GAM0[10,4] = (RR_ss * (1 - beta * gamma_Fss))/(RR_Fss - RR_ss);
+GAM0[10,8] = -(RR_Fss * (1 - beta * gamma_Fss))/(RR_Fss - RR_ss); 
+GAM0[10,14] = beta * gamma_Fss;
+GAM0[10,15] = 1;
+GAM0[10,25] = 1 - beta * gamma_Fss;
+GAM0[10,29] = -beta * gamma_Fss;
+GAM0[10,30] = -beta * gamma_Fss;
+GAM0[10,42] = (gamma_Fss * (1 - beta))/(1 - gamma_Fss) * rho_F;
+
+// 11. Time-varying coefficient eta: GAM0[11,.]
+GAM0[11,16] = 1;
+GAM0[11,17] = beta * gamma_Fss;
+GAM0[11,31] = -beta * gamma_Fss;
+GAM0[11,32] = -beta * gamma_Fss;
+GAM0[11,42] = (gamma_Fss * (1 - beta))/(1 - gamma_Fss) * rho_F; 
+
+// 12. Net worth transition of financial intermediary: GAM0[12,.], GAM1[12,.]
+GAM0[12,5] = gamma_Fss * RR_ss * Lev_Fss;
+GAM0[12,17] = 1;
+GAM0[12,42] = -gamma_Fss * ((RR_Fss - RR_ss) * Lev_Fss + RR_ss);
+
+GAM1[12,4] = -gamma_Fss * (RR_Fss - RR_ss) * Lev_Fss;
+GAM1[12,8] = gamma_Fss * RR_Fss * Lev_Fss;
+GAM1[12,14] = gamma_Fss * (RR_Fss - RR_ss) * Lev_Fss;
+GAM1[12,17] = gamma_Fss * RR_ss + xi_F;
+
+// 13. Leverage ratio: GAM0[13,.]
+GAM0[13,15] = -Nu_ss/(lambda - Nu_ss);
+GAM0[13,16] = -1;
+GAM0[13,18] = 1;
+
+// 14. Financial intermediary's balance sheet identity: GAM0[14,.]
+GAM0[14,14] = -1;
+GAM0[14,17] = 1;
+GAM0[14,18] = 1;
+
+// 15. Investment Euler equation: GAM0[15,.], GAM1[15,.]
+
+GAM0[15,11] = -kappa/(1 + beta);
+GAM0[15,19] = 1;
+GAM0[15,33] = -beta/(1 + beta);
+GAM0[15,38] = -1;
+
+GAM1[15,19] = 1/(1+beta);
+
+// 16. Capital accumulation equation: GAM0[16,.], GAM1[16,.]
+GAM0[16,10] = 1; 
+
+GAM1[16,10] = 1 - delta;
+GAM1[16,19] = delta;
+
+// 17. Hybrid New Keynesian Phillips curve: GAM0[17,.], GAM1[17,.]
+GAM0[17,5] = 1 + beta * iota_P;
+GAM0[17,6] = -(1 - beta * theta_P) * (1 - theta_P)/theta_P;
+GAM0[17,25] = -beta;
+
+GAM1[17,5] = iota_P;
+
+// 18. Monetary policy: GAM0[18,.], GAM1[18,.], PSI0[18,.]
+GAM0[18,4] = 1;
+GAM0[18,5] = -(1 - rho_R) * mu_Pi;
+GAM0[18,7] = -(1 - rho_R) * mu_Y;
+
+GAM1[18,4] = rho_R;
+
+PSI0[18,8] = 1; // Monetary policy shock
+
+// 19. Resource constraint: GAM0[19,.]
+GAM0[19,1] = -CoverY;
+GAM0[19,7] = 1;
+GAM0[19,19] = -IoverY;
+GAM0[19,36] = -GoverY;
+
+// 20. Spread between bank rate and deposit rate: GAM0[20,.]
+GAM0[20,4] = 1;
+GAM0[20,8] = -1;
+GAM0[20,20] = 1;
+
+// 21. Total spread: GAM0[21,.]
+GAM0[21,4] = 1;
+GAM0[21,8] = -1;
+GAM0[21,9] = -1;
+GAM0[21,21] = 1;
+
+// 22. Entrepreneur's leverage ratio: GAM0[22,.]
+GAM0[22,10] = -1;
+GAM0[22,11] = -1;
+GAM0[22,12] = 1;
+GAM0[22,22] = 1;
+
+// 23. Corporate borrowing rate: GAM0[23,.]
+GAM0[23,8] = -1;
+GAM0[23,9] = -1;
+GAM0[23,23] = 1;
+
+// 24-30. Exogenous AR(1) Shocks: \\
+// 24. TFP shock: GAM0[24,.], GAM1[24,.], PSI0[24,.]
+GAM0[24,37] = 1;
+GAM1[24,37] = rho_A;
+PSI0[24,1] = 1;
+
+// 25. Preference shock: GAM0[25,.], GAM1[25,.], PSI0[25,.]
+GAM0[25,39] = 1;
+GAM1[25,39] = rho_C;
+PSI0[25,2] = 1;
+
+// 26. Labor supply shock: GAM0[26,.], GAM1[26,.], PSI0[26,.]
+GAM0[26,40] = 1;
+GAM1[26,40] = rho_L;
+PSI0[26,7] = 1;
+
+// 27. Investment specific tech. shock: GAM0[27,.], GAM1[27,.], PSI0[27,.]
+GAM0[27,38] = 1;
+GAM1[27,38] = rho_Ak;
+PSI0[27,6] = 1;
+
+// 28. Entrepreneur net worth shock: GAM0[28,.], GAM1[28,.], PSI0[28,.]
+GAM0[28,41] = 1;
+GAM1[28,41] = rho_E;
+PSI0[28,3] = 1;
+
+// 29. Banks' net worth shock: GAM0[29,.], GAM1[29,.], PSI0[29,.]
+GAM0[29,42] = 1;
+GAM1[29,42] = rho_F;
+PSI0[29,4] = 1;
+
+// 30. Government expenditure shock: GAM0[30,.], GAM1[30,.], PSI0[30,.]
+GAM0[30,36] = 1;
+GAM1[30,36] = rho_G;
+PSI0[30,5] = 1;
+
+// 31-43. Forecasting Errors: 
+// 31. Consumption forecast error: GAM0[31,.], GAM1[31,.], PPI[31,.]
+GAM0[31,1] = 1;
+GAM1[31,24] = 1;
+PPI[31,1] = 1;
+
+// 32. Inflation forecast error: GAM0[32,.], GAM1[32,.], PPI[32,.]
+GAM0[32,5] = 1;
+GAM1[32,25] = 1;
+PPI[32,2] = 1;
+ 
+// 33. Output forecast error: GAM0[33,.], GAM1[33,.], PPI[33,.]
+GAM0[33,7] = 1;
+GAM1[33,26] = 1;
+PPI[33,3] = 1;
+
+// 34. Capital forecast error: GAM0[34,.], GAM1[34,.], PPI[34,.]
+GAM0[34,10] = 1;
+GAM1[34,27] = 1;
+PPI[34,4] = 1;
+
+// 35. Capital price forecast error: GAM0[35,.], GAM1[35,.], PPI[35,.]
+GAM0[35,11] = 1;
+GAM1[35,28] = 1;
+PPI[35,5] = 1;
+
+//36. Entrep. borrowing forecast error: GAM0[36,.], GAM1[36,.], PPI[36,.]
+GAM0[36,14] = 1;
+GAM1[36,29] = 1;
+PPI[36,6] = 1;
+
+// 37. Nu forecast error: GAM0[37,.], GAM1[37,.], PPI[37,.]
+GAM0[37,15] = 1;
+GAM1[37,30] = 1;
+PPI[37,7] = 1;
+// 38. Eta forecast error: GAM0[38,.], GAM1[38,.], PPI[38,.]
+GAM0[38,16] = 1;
+GAM1[38,31] = 1;
+PPI[38,8] = 1;
+
+// 39. Bank net worth forecast error: GAM0[39,.], GAM1[39,.], PPI[39,.]
+GAM0[39,17] = 1;
+GAM1[39,32] = 1;
+PPI[39,9] = 1;
+
+// 40. Investment forecast error: GAM0[40,.], GAM1[40,.], PPI[40,.]
+GAM0[40,19] = 1;
+GAM1[40,33] = 1;
+PPI[40,10] = 1;
+
+// 41. Marginal cost forecast error: GAM0[41,.], GAM1[41,.], PPI[41,.]
+GAM0[41,6] = 1;
+GAM1[41,34] = 1;
+PPI[41,11] = 1;
+// 42. Wage forecast error: GAM0[42,.], GAM1[42,.], PPI[42,.]
+GAM0[42,2] = 1;
+GAM1[42,35] = 1;
+PPI[42,12] = 1;
+
+/* QZ(generalized Schur) decomposition by GENSYS
+*/
+
+{T1,TC,T0,TY,M,TZ,TETA,GEV,RC} = gensys(GAM0,GAM1,C,PSI0,PPI,1,1);
+
+retp(T1,TC,T0, RC);
+endp;
+
